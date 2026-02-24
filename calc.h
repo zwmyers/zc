@@ -31,7 +31,8 @@ typedef enum expr_type {
 	EXPR_IF,
 	EXPR_SEQUENCE,
 	EXPR_BLOCK,
-	EXPR_LET
+	EXPR_LET,
+	EXPR_WHILE
 } expr_type;
 
 typedef enum operator_type {
@@ -88,6 +89,11 @@ typedef struct expression {
 			char *var_name;
 		} let;
 
+		struct {
+			struct expression *condition;
+			struct expression *body;
+		} while_expr;
+
 	} data;
 
 } expression;
@@ -131,6 +137,7 @@ expression *new_if(expression *cond, expression *then_branch, expression *else_b
 expression *new_sequence(expression *left, expression *right);
 expression *new_block(expression *body);
 expression *new_let(char *name, expression *value);
+expression *new_while(expression *condition, expression *body);
 
 //identifiers
 

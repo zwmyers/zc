@@ -157,6 +157,14 @@ expression *new_let(char *name, expression *value) {
 	return expr;
 }
 
+expression *new_while(expression *cond, expression *body) {
+	expression *expr = malloc(sizeof(expression));
+	expr->type = EXPR_WHILE;
+	expr->data.while_expr.condition = cond;
+	expr->data.while_expr.body = body;
+	return expr;
+}
+
 /*****************************identifiers*******************************/
 
 int is_identifier_start(char c) {
@@ -292,6 +300,14 @@ int evaluate_expr(expression *expr, env *e) {
 			int val = evaluate_expr(expr->data.let.value, e);
 			env_define(e, expr->data.let.var_name, val);
 			return val;
+		}
+		
+		case EXPR_WHILE: {
+			int res = 0;
+			while (evaluate_expr(expr->data.while_expr.condition, e)) {
+				res = evaluate_expr(expr->data.while_expr.body, e);
+			}
+			return res;
 		}
 
 		default:
@@ -616,7 +632,30 @@ expression *parse_if(parser *p) {
 
 		return new_if(cond, then_branch, else_branch);
 	}
-	
+
+	if (strncmp(p->input + p->pos, "while", 5) == 0 && !isalnum(p->input[p->pos+5])) {
+		p->pos += 5;
+		skip_ws(p);
+		
+		if (peek(p) != '(') {
+			fprintf(stderr, "expected '(' after while\n");
+			exit(1);
+		}
+
+		advance(p);
+		expression *cond = parse_expression(p);
+		skip_ws(p);
+
+		if (peek(p) != ')') {
+			fprintf(stderr, "expected ')' after while\n");
+			exit(1);
+		}
+
+		advance(p);
+		expression *body = parse_if(p);
+		return new_while(cond, body);
+	}
+
 	if (peek(p) == '{') {
 		advance(p);
 		
