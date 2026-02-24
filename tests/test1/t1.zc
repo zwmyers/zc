@@ -1,0 +1,19 @@
+let a = 10;
+let b = a + 5;
+
+if (a == b - 5) {
+	let a = b;
+	print(a);
+	print(b);
+	b = b + 5;
+	{
+		b = 10;
+		print(b);
+	}
+	print(b);
+} else {
+	print(1000);
+}
+
+print(a);
+print(b);

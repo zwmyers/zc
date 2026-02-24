@@ -37,6 +37,10 @@ void skip_ws(parser *p) {
 	}
 }
 
+int is_at_end(parser *p) {
+	return p->input[p->pos] == '\0';
+}
+
 /************************************************************************/
 
 env *new_env(env *parent) {
@@ -659,9 +663,21 @@ expression *parse_if(parser *p) {
 	if (peek(p) == '{') {
 		advance(p);
 		
-		expression *body = parse_statement(p);
+		expression *body = NULL;
 		
 		skip_ws(p);
+		
+		while (peek(p) != '}' && !is_at_end(p)) {
+			expression *stmt = parse_statement(p);
+
+			if (!body) {
+				body = stmt;
+			} else {
+				body = new_sequence(body, stmt);
+			}
+
+			skip_ws(p);
+		}
 
 		if (peek(p) != '}') {
 			fprintf(stderr, "expected '}'\n");
@@ -734,17 +750,21 @@ expression *parse_logical_or(parser *p) {
 }
 
 expression *parse_program(parser *p) {
-	expression *result = parse_statement(p);
+	expression *body = NULL;
 
-	skip_ws(p);
+	while (!is_at_end(p)) {
+		expression *stmt = parse_statement(p);
 
-	while (peek(p) != '\0') {
-		expression *next = parse_statement(p);
-		result = new_sequence(result, next);
+		if (!body) {
+			body = stmt;
+		} else {
+			body = new_sequence(body, stmt);
+		}
+
 		skip_ws(p);
 	}
 
-	return result;
+	return new_block(body);
 }
 
 /***********************************************************************/
