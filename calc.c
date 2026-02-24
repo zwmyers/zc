@@ -37,6 +37,46 @@ void skip_ws(parser *p) {
 	}
 }
 
+/************************************************************************/
+
+env *new_env(env *parent) {
+	env *e = malloc(sizeof(env));
+	e->vars = NULL;
+	e->parent = parent;
+	return e;
+}
+
+var *env_lookup(env *e, const char *name) {
+	while(e) {
+		var *v = e->vars;
+		while (v) {
+			if (strcmp(v->name, name) == 0) {
+				return v;
+			}
+			v = v->next;
+		}
+		e = e->parent;
+	}
+	return NULL;
+}
+
+int env_assign(env *e, const char *name, int value) {
+	var *v = env_lookup(e, name);
+	if (!v) {
+		return 0;
+	}
+	v->value = value;
+	return 1;
+}
+
+void env_define(env *e, const char *name, int value) {
+	var *v = malloc(sizeof(var));
+	v->name = strdup(name);
+	v->value = value;
+	v->next = e->vars;
+	e->vars = v;
+}
+
 /*****************************contructors********************************/
 
 expression *new_literal(int value) {
@@ -101,6 +141,21 @@ expression *new_sequence(expression *left, expression *right) {
 	return expr;
 }
 
+expression *new_block(expression *body) {
+	expression *expr = malloc(sizeof(expression));
+	expr->type = EXPR_BLOCK;
+	expr->data.block.body = body;
+	return expr;
+}
+
+expression *new_let(char *name, expression *value) {
+	expression *expr = malloc(sizeof(expression));
+	expr->type = EXPR_LET;
+	expr->data.let.var_name = name;
+	expr->data.let.value = value;
+	return expr;
+}
+
 /*****************************identifiers*******************************/
 
 int is_identifier_start(char c) {
@@ -111,54 +166,38 @@ int is_identifier_char(char c) {
 	return isalnum(c) || c == '_';
 }
 
-/******************************variables********************************/
-
-variable vars[MAX_VARS];
-int var_count = 0;
-
-int get_var(const char *name) {
-	for (int i = 0; i < var_count; i++) {
-		if (strcmp(vars[i].name, name) == 0) {
-			return vars[i].value;
-		}
-	}
-	fprintf(stderr, "undefined variable: %s\n", name);
-	return -1;
-}
-
-void set_var(const char *name, int value) {
-	for (int i = 0; i < var_count; i++) {
-		if (strcmp(vars[i].name, name) == 0) {
-			vars[i].value = value;
-			return;
-		}
-	}
-
-	strcpy(vars[var_count].name, name);
-	vars[var_count].value = value;
-	var_count++;
-}
 
 /*****************************evaluation********************************/
 
-int evaluate_expr(expression *expr) {
+int evaluate_expr(expression *expr, env *e) {
 	
 	switch (expr->type) {
 
 		case EXPR_LITERAL:
 			return expr->data.value;
 
-		case EXPR_VARIABLE:
-			return get_var(expr->data.var_name);
+		case EXPR_VARIABLE: {
+			var *v = env_lookup(e, expr->data.var_name);
+			if (!v) {
+				fprintf(stderr, "undefined variable: %s\n", expr->data.var_name);
+				exit(1);
+			}
+			return v->value;
+		}
 
 		case EXPR_ASSIGN: {
-			int val = evaluate_expr(expr->data.assign.value);
-			set_var(expr->data.assign.var_name, val);
+			int val = evaluate_expr(expr->data.assign.value, e);
+			
+			if (!env_assign(e, expr->data.assign.var_name, val)) {
+				fprintf(stderr, "undefined variable: %s\n", expr->data.assign.var_name);
+				exit(1);
+			}
+
 			return val;
 		}
 
 		case EXPR_UNARY: {
-			int val = evaluate_expr(expr->data.unary.operand);
+			int val = evaluate_expr(expr->data.unary.operand, e);
 
 			switch (expr->data.unary.operation) {
 				case OP_NEG:
@@ -170,10 +209,10 @@ int evaluate_expr(expression *expr) {
 		}
 		
 		case EXPR_IF: {
-			int cond = evaluate_expr(expr->data.if_expr.condition);
+			int cond = evaluate_expr(expr->data.if_expr.condition, e);
 
 			if (cond) {
-				return evaluate_expr(expr->data.if_expr.then_branch);
+				return evaluate_expr(expr->data.if_expr.then_branch, e);
 			}
 
 			return 0;
@@ -186,38 +225,38 @@ int evaluate_expr(expression *expr) {
 
 			switch(op) {
 				case OP_ADD:
-						return evaluate_expr(left_expr) + evaluate_expr(right_expr);
+						return evaluate_expr(left_expr, e) + evaluate_expr(right_expr, e);
 				case OP_SUB:
-						return evaluate_expr(left_expr) - evaluate_expr(right_expr);
+						return evaluate_expr(left_expr, e) - evaluate_expr(right_expr, e);
 				case OP_MUL:
-						return evaluate_expr(left_expr) * evaluate_expr(right_expr);
+						return evaluate_expr(left_expr, e) * evaluate_expr(right_expr, e);
 				case OP_DIV:
-						return evaluate_expr(left_expr) / evaluate_expr(right_expr);
+						return evaluate_expr(left_expr, e) / evaluate_expr(right_expr, e);
 				case OP_MOD:
-						return evaluate_expr(left_expr) % evaluate_expr(right_expr);
+						return evaluate_expr(left_expr, e) % evaluate_expr(right_expr, e);
 				case OP_PWR:
-						return pwr(evaluate_expr(left_expr), evaluate_expr(right_expr));
+						return pwr(evaluate_expr(left_expr, e), evaluate_expr(right_expr, e));
 
 				case OP_EQ:
-					return evaluate_expr(left_expr) == evaluate_expr(right_expr);
+					return evaluate_expr(left_expr, e) == evaluate_expr(right_expr, e);
 				case OP_NEQ:
-					return evaluate_expr(left_expr) != evaluate_expr(right_expr);
+					return evaluate_expr(left_expr, e) != evaluate_expr(right_expr, e);
 				case OP_LT:
-					return evaluate_expr(left_expr) < evaluate_expr(right_expr);
+					return evaluate_expr(left_expr, e) < evaluate_expr(right_expr, e);
 				case OP_GT:
-					return evaluate_expr(left_expr) > evaluate_expr(right_expr);
+					return evaluate_expr(left_expr, e) > evaluate_expr(right_expr, e);
 				case OP_LE:
-					return evaluate_expr(left_expr) <= evaluate_expr(right_expr);
+					return evaluate_expr(left_expr, e) <= evaluate_expr(right_expr, e);
 				case OP_GE:
-					return evaluate_expr(left_expr) >= evaluate_expr(right_expr);
+					return evaluate_expr(left_expr, e) >= evaluate_expr(right_expr, e);
 
 				case OP_AND: {
-						int left_val = evaluate_expr(left_expr);
-						return (!left_val) ? 0 : (evaluate_expr(right_expr) != 0);
+						int left_val = evaluate_expr(left_expr, e);
+						return (!left_val) ? 0 : (evaluate_expr(right_expr, e) != 0);
 					}
 				case OP_OR: {
-						int left_val = evaluate_expr(left_expr);
-						return left_val ? 1 : (evaluate_expr(right_expr) != 0);
+						int left_val = evaluate_expr(left_expr, e);
+						return left_val ? 1 : (evaluate_expr(right_expr, e) != 0);
 					}
 
 				default:
@@ -227,14 +266,27 @@ int evaluate_expr(expression *expr) {
 		}
 		
 		case EXPR_PRINT: {
-			int val = evaluate_expr(expr->data.print.value);
+			int val = evaluate_expr(expr->data.print.value, e);
 			printf("%d\n", val);
 			return val;
 		}
 		
 		case EXPR_SEQUENCE: {
-			evaluate_expr(expr->data.sequence.left);
-			return evaluate_expr(expr->data.sequence.right);
+			evaluate_expr(expr->data.sequence.left, e);
+			return evaluate_expr(expr->data.sequence.right, e);
+		}
+
+		case EXPR_BLOCK: {
+			env *child = new_env(e);
+			int result = evaluate_expr(expr->data.block.body, child);
+			free_env(child);
+			return result;
+		}
+		
+		case EXPR_LET: {
+			int val = evaluate_expr(expr->data.let.value, e);
+			env_define(e, expr->data.let.var_name, val);
+			return val;
 		}
 
 		default:
@@ -261,7 +313,22 @@ void free_expr(expression *expr) {
 		free_expr(expr->data.binary.right);
 	}
 
+	if (expr->type == EXPR_BLOCK) {
+		free_expr(expr->data.block.body);
+	}
+
 	free(expr);
+}
+
+void free_env(env *e) {
+	var *v = e->vars;
+	while (v) {
+		var *next = v->next;
+		free(v->name);
+		free(v);
+		v = next;
+	}
+	free(e);
 }
 
 /*******************************parsing*********************************/
@@ -480,6 +547,30 @@ expression *parse_statement(parser *p) {
 expression *parse_if(parser *p) {
 	skip_ws(p);
 
+	if (strncmp(p->input + p->pos, "let", 3) == 0 && !isalnum(p->input[p->pos + 3])) {
+		p->pos += 3;
+		skip_ws(p);
+
+		char *name = parse_identifier(p);
+		if (!name) {
+			fprintf(stderr, "expected identifer after let\n");
+			exit(1);
+		}
+
+		skip_ws(p);
+
+		if (peek(p) != '=') {
+			fprintf(stderr, "expected '=' after identifier\n");
+			exit(1);
+		}
+
+		advance(p);
+
+		expression *value = parse_expression(p);
+
+		return new_let(name, value);
+	}
+
 	if (strncmp(p->input + p->pos, "if", 2) == 0 && !isalnum(p->input[p->pos + 2])) {
 		p->pos += 2;
 		skip_ws(p);
@@ -504,6 +595,23 @@ expression *parse_if(parser *p) {
 		expression *then_branch = parse_if(p);
 
 		return new_if(cond, then_branch);
+	}
+	
+	if (peek(p) == '{') {
+		advance(p);
+		
+		expression *body = parse_statement(p);
+		
+		skip_ws(p);
+
+		if (peek(p) != '}') {
+			fprintf(stderr, "expected '}'\n");
+			exit(1);
+		}
+
+		advance(p);
+
+		return new_block(body);
 	}
 
 	return parse_assignment(p);
@@ -566,11 +674,26 @@ expression *parse_logical_or(parser *p) {
 	return left;
 }
 
+expression *parse_program(parser *p) {
+	expression *result = parse_statement(p);
+
+	skip_ws(p);
+
+	while (peek(p) != '\0') {
+		expression *next = parse_statement(p);
+		result = new_sequence(result, next);
+		skip_ws(p);
+	}
+
+	return result;
+}
+
 /***********************************************************************/
 
 void run_repl() {
 	printf("ZCALC INT REPL\n");
 	printf("( + - * / ^ %% < <= >= > == != && || )\n");
+	env *global = new_env(NULL);
 
 	while (1) {
 		char line[256];
@@ -587,7 +710,7 @@ void run_repl() {
 		parser p = { line, 0 };
 		expression *expr = parse_statement(&p);
 
-		int val = evaluate_expr(expr);
+		int val = evaluate_expr(expr, global);
 		if (expr->type != EXPR_PRINT) {
 			//printf("%d\n", val);
 		}
@@ -623,11 +746,12 @@ char *read_file(const char *filename) {
 void run_file(const char *filename) {
 	char *source = read_file(filename);
 
-	parser p = { source, 0 };
-	
-	expression *expr = parse_statement(&p);
+	env *global = new_env(NULL);
 
-	evaluate_expr(expr);
+	parser p = { source, 0 };	
+	expression *expr = parse_program(&p);
+
+	evaluate_expr(expr, global);
 	
 	free_expr(expr);
 	free(source);

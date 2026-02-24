@@ -10,6 +10,17 @@
 
 #define MAX_VARS 100
 
+typedef struct var {
+	char *name;
+	int value;
+	struct var *next;
+} var;
+
+typedef struct env {
+	struct var *vars;
+	struct env *parent;
+} env;
+
 typedef enum expr_type {
 	EXPR_LITERAL,
 	EXPR_BINARY,
@@ -18,7 +29,9 @@ typedef enum expr_type {
 	EXPR_ASSIGN,
 	EXPR_PRINT,
 	EXPR_IF,
-	EXPR_SEQUENCE
+	EXPR_SEQUENCE,
+	EXPR_BLOCK,
+	EXPR_LET
 } expr_type;
 
 typedef enum operator_type {
@@ -65,6 +78,15 @@ typedef struct expression {
 			struct expression *right;
 		} sequence;
 
+		struct {
+			struct expression *body;
+		} block;
+
+		struct {
+			struct expression *value;
+			char *var_name;
+		} let;
+
 	} data;
 
 } expression;
@@ -89,6 +111,13 @@ char peek(parser *p);
 char advance(parser *p);
 void skip_ws(parser *p);
 
+//environment functions
+
+env *new_env(env *parent);
+var *env_lookup(env *e, const char *name);
+int env_assign(env *e, const char *name, int value);
+void env_define(env *e, const char *name, int value);
+
 //constuctors
 
 expression *new_literal(int value);
@@ -99,24 +128,22 @@ expression *new_assign(char *name, expression *value);
 expression *new_print(expression *value);
 expression *new_if(expression *cond, expression *then_branch);
 expression *new_sequence(expression *left, expression *right);
+expression *new_block(expression *body);
+expression *new_let(char *name, expression *value);
 
 //identifiers
 
 int is_identifier_start(char c);
 int is_identifier_char(char c);
 
-//variables
-
-int get_var(const char *name);
-void set_var(const char *name, int value);
-
 //evaluation
 
-int evaluate_expr(expression *expr);
+int evaluate_expr(expression *expr, env *e);
 
 //free
 
 void free_expr(expression *expr);
+void free_env(env *e);
 
 //parsing
 
@@ -134,6 +161,7 @@ expression *parse_logical_and(parser *p);
 expression *parse_logical_or(parser *p);
 expression *parse_if(parser *p);
 expression *parse_assignment(parser *p);
+expression *parse_program(parser *p);
 
 //file handling
 
