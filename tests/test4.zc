@@ -1,0 +1,16 @@
+let a = 5;
+let b = 4;
+print(a);
+
+if (a == 4) {
+	print(a);
+	a = 10;
+	b = 10;
+} else {
+	print(b);
+	a = 9;
+	b = 9;
+}
+
+print(a);
+print(b);

@@ -71,6 +71,7 @@ typedef struct expression {
 		struct {
 			struct expression *condition;
 			struct expression *then_branch;
+			struct expression *else_branch;
 		} if_expr;
 
 		struct {
@@ -126,7 +127,7 @@ expression *new_unary(operator_type op, expression *operand);
 expression *new_variable(char *name);
 expression *new_assign(char *name, expression *value);
 expression *new_print(expression *value);
-expression *new_if(expression *cond, expression *then_branch);
+expression *new_if(expression *cond, expression *then_branch, expression *else_branch);
 expression *new_sequence(expression *left, expression *right);
 expression *new_block(expression *body);
 expression *new_let(char *name, expression *value);

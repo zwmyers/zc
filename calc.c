@@ -125,11 +125,12 @@ expression *new_print(expression *value) {
 	return expr;
 }
 
-expression *new_if(expression *cond, expression *then_branch) {
+expression *new_if(expression *cond, expression *then_branch, expression* else_branch) {
 	expression *expr = malloc(sizeof(expression));
 	expr->type = EXPR_IF;
 	expr->data.if_expr.condition = cond;
 	expr->data.if_expr.then_branch = then_branch;
+	expr->data.if_expr.else_branch = else_branch;
 	return expr;
 }
 
@@ -213,6 +214,10 @@ int evaluate_expr(expression *expr, env *e) {
 
 			if (cond) {
 				return evaluate_expr(expr->data.if_expr.then_branch, e);
+			}
+
+			if (expr->data.if_expr.else_branch) {
+				return evaluate_expr(expr->data.if_expr.else_branch, e);
 			}
 
 			return 0;
@@ -317,6 +322,14 @@ void free_expr(expression *expr) {
 		free_expr(expr->data.block.body);
 	}
 
+	if(expr->type == EXPR_IF) {
+		free_expr(expr->data.if_expr.condition);
+		free_expr(expr->data.if_expr.then_branch);
+		if (expr->data.if_expr.else_branch) {
+			free_expr(expr->data.if_expr.else_branch);
+		}
+	}
+
 	free(expr);
 }
 
@@ -397,7 +410,7 @@ expression *parse_term(parser *p) {
 
 		if (c == '*' || c == '/' || c == '%') {
 			advance(p);
-
+	
 			operator_type op;
 			
 			if (c == '*') {
@@ -420,7 +433,7 @@ expression *parse_term(parser *p) {
 
 expression *parse_additive(parser *p) {
 	expression *left = parse_term(p);
-
+	 
 	while (1) {
 		skip_ws(p);
 		char c = peek(p);
@@ -591,10 +604,17 @@ expression *parse_if(parser *p) {
 		}
 
 		advance(p);
-
 		expression *then_branch = parse_if(p);
+		
+		skip_ws(p);
+		expression *else_branch = NULL;
 
-		return new_if(cond, then_branch);
+		if (strncmp(p->input+p->pos, "else", 4) == 0 && !isalnum(p->input[p->pos + 4])) {
+			p->pos += 4;
+			else_branch = parse_if(p);
+		}
+
+		return new_if(cond, then_branch, else_branch);
 	}
 	
 	if (peek(p) == '{') {
