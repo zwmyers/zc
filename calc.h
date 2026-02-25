@@ -10,9 +10,24 @@
 
 #define MAX_VARS 100
 
+typedef enum value_type {
+	VAL_INT,
+	VAL_FUNCTION
+} value_type;
+
+typedef struct function function;
+
+typedef struct value {
+	value_type type;
+	union {
+		int int_val;
+		function *func_val;
+	};
+} value;
+
 typedef struct var {
 	char *name;
-	int value;
+	value val;
 	struct var *next;
 } var;
 
@@ -20,6 +35,16 @@ typedef struct env {
 	struct var *vars;
 	struct env *parent;
 } env;
+
+typedef value (*builtin_func)(int arg_count, value *args);
+
+struct function {
+	char **params;
+	int param_count;
+	struct expression *body;
+	struct env *closure;
+	builtin_func c_func;
+};
 
 typedef enum expr_type {
 	EXPR_LITERAL,
@@ -32,7 +57,10 @@ typedef enum expr_type {
 	EXPR_SEQUENCE,
 	EXPR_BLOCK,
 	EXPR_LET,
-	EXPR_WHILE
+	EXPR_WHILE,
+	EXPR_FUNCTION,
+	EXPR_CALL,
+	EXPR_RETURN
 } expr_type;
 
 typedef enum operator_type {
@@ -94,6 +122,23 @@ typedef struct expression {
 			struct expression *body;
 		} while_expr;
 
+		struct {
+			struct expression *body;
+			char *name;
+			char **params;
+			int param_count;
+		} function_expr;
+
+		struct {
+			struct expression *callee;
+			struct expression **args;
+			int arg_count;
+		} call_expr;
+			
+		struct {
+			struct expression *value;
+		} return_expr;
+
 	} data;
 
 } expression;
@@ -112,6 +157,10 @@ typedef struct variable {
 
 static int pwr(int a, int b);
 
+//builtin functions
+
+value builtin_print(int arg_count, value *args);
+
 //parser functions
 
 char peek(parser *p);
@@ -122,8 +171,8 @@ void skip_ws(parser *p);
 
 env *new_env(env *parent);
 var *env_lookup(env *e, const char *name);
-int env_assign(env *e, const char *name, int value);
-void env_define(env *e, const char *name, int value);
+int env_assign(env *e, const char *name, value val);
+void env_define(env *e, const char *name, value val);
 
 //constuctors
 
@@ -138,6 +187,9 @@ expression *new_sequence(expression *left, expression *right);
 expression *new_block(expression *body);
 expression *new_let(char *name, expression *value);
 expression *new_while(expression *condition, expression *body);
+expression *new_function(char *name, char **params, int param_count, expression *body);
+expression *new_call(expression *callee, expression **args, int arg_count);
+expression *new_return(expression *value);
 
 //identifiers
 
@@ -146,7 +198,7 @@ int is_identifier_char(char c);
 
 //evaluation
 
-int evaluate_expr(expression *expr, env *e);
+value evaluate_expr(expression *expr, env *e);
 
 //free
 

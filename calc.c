@@ -1,5 +1,10 @@
 #include "calc.h"
 
+/*******************************global**********************************/
+
+static int return_flag = 0;
+static value return_value;
+
 /*****************************operations********************************/
 
 //exp by squaring, O(log(n))
@@ -21,6 +26,23 @@ static int pwr(int a, int b) {
 	}
 	return res;
 }
+
+/**************************builtin function*****************************/
+
+value builtin_print(int arg_count, value *args) {
+	if (arg_count != 1 || args[0].type != VAL_INT) {
+		fprintf(stderr, "print expects a single int arg\n");
+		exit(1);
+	}
+
+	printf("%d\n", args[0].int_val);
+
+	value result;
+	result.type = VAL_INT;
+	result.int_val = 0;
+	return result;
+}
+
 /**************************parser functions*****************************/
 
 char peek(parser *p) {
@@ -64,19 +86,19 @@ var *env_lookup(env *e, const char *name) {
 	return NULL;
 }
 
-int env_assign(env *e, const char *name, int value) {
+int env_assign(env *e, const char *name, value val) {
 	var *v = env_lookup(e, name);
 	if (!v) {
 		return 0;
 	}
-	v->value = value;
+	v->val = val;
 	return 1;
 }
 
-void env_define(env *e, const char *name, int value) {
+void env_define(env *e, const char *name, value val) {
 	var *v = malloc(sizeof(var));
 	v->name = strdup(name);
-	v->value = value;
+	v->val = val;
 	v->next = e->vars;
 	e->vars = v;
 }
@@ -169,6 +191,32 @@ expression *new_while(expression *cond, expression *body) {
 	return expr;
 }
 
+expression *new_function(char *name, char **params, int param_count, expression *body) {
+	expression *expr = malloc(sizeof(expression));
+	expr->type = EXPR_FUNCTION;
+	expr->data.function_expr.name = name;
+	expr->data.function_expr.params = params;
+	expr->data.function_expr.param_count = param_count;
+	expr->data.function_expr.body = body;
+	return expr;
+}
+
+expression *new_call(expression *callee, expression **args, int arg_count) {
+	expression *expr = malloc(sizeof(expression));
+	expr->type = EXPR_CALL;
+	expr->data.call_expr.callee = callee;
+	expr->data.call_expr.args = args;
+	expr->data.call_expr.arg_count = arg_count;
+	return expr;
+}
+
+expression *new_return(expression *value) {
+	expression *expr = malloc(sizeof(expression));
+	expr->type = EXPR_RETURN;
+	expr->data.return_expr.value = value;
+	return expr;
+}
+
 /*****************************identifiers*******************************/
 
 int is_identifier_start(char c) {
@@ -182,12 +230,16 @@ int is_identifier_char(char c) {
 
 /*****************************evaluation********************************/
 
-int evaluate_expr(expression *expr, env *e) {
+value evaluate_expr(expression *expr, env *e) {
 	
 	switch (expr->type) {
 
-		case EXPR_LITERAL:
-			return expr->data.value;
+		case EXPR_LITERAL: {
+			value v;
+			v.type = VAL_INT;
+			v.int_val = expr->data.value;
+			return v;
+		}
 
 		case EXPR_VARIABLE: {
 			var *v = env_lookup(e, expr->data.var_name);
@@ -195,11 +247,11 @@ int evaluate_expr(expression *expr, env *e) {
 				fprintf(stderr, "undefined variable: %s\n", expr->data.var_name);
 				exit(1);
 			}
-			return v->value;
+			return v->val;
 		}
 
 		case EXPR_ASSIGN: {
-			int val = evaluate_expr(expr->data.assign.value, e);
+			value val = evaluate_expr(expr->data.assign.value, e);
 			
 			if (!env_assign(e, expr->data.assign.var_name, val)) {
 				fprintf(stderr, "undefined variable: %s\n", expr->data.assign.var_name);
@@ -210,11 +262,20 @@ int evaluate_expr(expression *expr, env *e) {
 		}
 
 		case EXPR_UNARY: {
-			int val = evaluate_expr(expr->data.unary.operand, e);
+			value v = evaluate_expr(expr->data.unary.operand, e);
+
+			if (v.type != VAL_INT) {
+				fprintf(stderr, "type error in unary op\n");
+				exit(1);
+			}
+
+			value result;
+			result.type = VAL_INT;
 
 			switch (expr->data.unary.operation) {
 				case OP_NEG:
-					return -val;
+					result.int_val = -v.int_val;
+					return result;
 				default:
 					fprintf(stderr, "unknown unary operator\n");
 					exit(1);
@@ -222,96 +283,216 @@ int evaluate_expr(expression *expr, env *e) {
 		}
 		
 		case EXPR_IF: {
-			int cond = evaluate_expr(expr->data.if_expr.condition, e);
+			value cond = evaluate_expr(expr->data.if_expr.condition, e);
 
-			if (cond) {
+			if (cond.type != VAL_INT) {
+				fprintf(stderr, "if condition must be int\n");
+				exit(1);
+			}
+
+			if (cond.int_val) {
 				return evaluate_expr(expr->data.if_expr.then_branch, e);
 			}
 
 			if (expr->data.if_expr.else_branch) {
 				return evaluate_expr(expr->data.if_expr.else_branch, e);
 			}
-
-			return 0;
+			
+			value result;
+			result.type = VAL_INT;
+			result.int_val = 0;
+			return result;
 		}
 
 		case EXPR_BINARY: {
-			operator_type op = expr->data.binary.operation;
-			expression *left_expr = expr->data.binary.left;
-			expression *right_expr = expr->data.binary.right;
+			value l = evaluate_expr(expr->data.binary.left, e);
+			value r = evaluate_expr(expr->data.binary.right, e);
 
-			switch(op) {
+			if (l.type != VAL_INT || r.type != VAL_INT) {
+				fprintf(stderr, "type error in binary op\n");
+				exit(1);
+			}
+
+			value result;
+			result.type = VAL_INT;
+
+			switch(expr->data.binary.operation) {
 				case OP_ADD:
-						return evaluate_expr(left_expr, e) + evaluate_expr(right_expr, e);
+						result.int_val = l.int_val + r.int_val;
+						break;
 				case OP_SUB:
-						return evaluate_expr(left_expr, e) - evaluate_expr(right_expr, e);
+						result.int_val = l.int_val - r.int_val;
+						break;
 				case OP_MUL:
-						return evaluate_expr(left_expr, e) * evaluate_expr(right_expr, e);
+						result.int_val = l.int_val * r.int_val;
+						break;
 				case OP_DIV:
-						return evaluate_expr(left_expr, e) / evaluate_expr(right_expr, e);
+						result.int_val = l.int_val / r.int_val;
+						break;
 				case OP_MOD:
-						return evaluate_expr(left_expr, e) % evaluate_expr(right_expr, e);
+						result.int_val = l.int_val % r.int_val;
+						break;
 				case OP_PWR:
-						return pwr(evaluate_expr(left_expr, e), evaluate_expr(right_expr, e));
+						result.int_val = pwr(l.int_val, r.int_val);
+						break;
 
 				case OP_EQ:
-					return evaluate_expr(left_expr, e) == evaluate_expr(right_expr, e);
+					result.int_val = (l.int_val == r.int_val);
+					break;
 				case OP_NEQ:
-					return evaluate_expr(left_expr, e) != evaluate_expr(right_expr, e);
+					result.int_val = (l.int_val != r.int_val);
+					break;
 				case OP_LT:
-					return evaluate_expr(left_expr, e) < evaluate_expr(right_expr, e);
+					result.int_val = (l.int_val < r.int_val);
+					break;
 				case OP_GT:
-					return evaluate_expr(left_expr, e) > evaluate_expr(right_expr, e);
+					result.int_val = (l.int_val > r.int_val);
+					break;
 				case OP_LE:
-					return evaluate_expr(left_expr, e) <= evaluate_expr(right_expr, e);
+					result.int_val = (l.int_val <= r.int_val);
+					break;
 				case OP_GE:
-					return evaluate_expr(left_expr, e) >= evaluate_expr(right_expr, e);
+					result.int_val = (l.int_val >= r.int_val);
+					break;
 
 				case OP_AND: {
-						int left_val = evaluate_expr(left_expr, e);
-						return (!left_val) ? 0 : (evaluate_expr(right_expr, e) != 0);
+						result.int_val = (l.int_val && r.int_val);
+						break;
 					}
 				case OP_OR: {
-						int left_val = evaluate_expr(left_expr, e);
-						return left_val ? 1 : (evaluate_expr(right_expr, e) != 0);
+						result.int_val = (l.int_val || r.int_val);
+						break;
 					}
 
 				default:
 					fprintf(stderr, "Unknown binary operator\n");
 					exit(1);
 			}
+
+			return result;
 		}
 		
 		case EXPR_PRINT: {
-			int val = evaluate_expr(expr->data.print.value, e);
-			printf("%d\n", val);
-			return val;
+			value v = evaluate_expr(expr->data.print.value, e);
+
+			if (v.type != VAL_INT) {
+				fprintf(stderr, "print expects int\n");
+				exit(1);
+			}
+
+			printf("%d\n", v.int_val);
+			return v;
 		}
 		
 		case EXPR_SEQUENCE: {
 			evaluate_expr(expr->data.sequence.left, e);
+			if (return_flag) {
+				return return_value;
+			}
 			return evaluate_expr(expr->data.sequence.right, e);
 		}
 
 		case EXPR_BLOCK: {
 			env *child = new_env(e);
-			int result = evaluate_expr(expr->data.block.body, child);
+			value result = evaluate_expr(expr->data.block.body, child);
 			free_env(child);
 			return result;
 		}
 		
 		case EXPR_LET: {
-			int val = evaluate_expr(expr->data.let.value, e);
+			value val = evaluate_expr(expr->data.let.value, e);
 			env_define(e, expr->data.let.var_name, val);
 			return val;
 		}
 		
 		case EXPR_WHILE: {
-			int res = 0;
-			while (evaluate_expr(expr->data.while_expr.condition, e)) {
-				res = evaluate_expr(expr->data.while_expr.body, e);
+			value result;
+			result.type = VAL_INT;
+			result.int_val = 0;
+
+			while (1) {
+				value cond = evaluate_expr(expr->data.while_expr.condition, e);
+				if (cond.type != VAL_INT) {
+					fprintf(stderr, "while condition must be int\n");
+					exit(1);
+				}
+				if (!cond.int_val) {
+					break;
+				}
+				result = evaluate_expr(expr->data.while_expr.body, e);
 			}
-			return res;
+
+			return result;
+		}
+
+		case EXPR_FUNCTION: {
+			function *fn = malloc(sizeof(function));
+			fn->params = expr->data.function_expr.params;
+			fn->param_count = expr->data.function_expr.param_count;
+			fn->body = expr->data.function_expr.body;
+			fn->closure = e;
+
+			value v;
+			v.type = VAL_FUNCTION;
+			v.func_val = fn;
+
+			env_define(e, expr->data.function_expr.name, v);
+
+			return v;
+		}
+
+		case EXPR_RETURN: {
+			return_value = evaluate_expr(expr->data.return_expr.value, e);
+			return_flag = 1;
+			return return_value;
+		}
+
+		case EXPR_CALL: {
+			value callee = evaluate_expr(expr->data.call_expr.callee, e);
+
+			if (callee.type != VAL_FUNCTION) {
+				fprintf(stderr, "attempt to call non-function\n");
+				exit(1);
+			}
+
+			function *fn = callee.func_val;
+			
+			value result;
+
+			if (fn->c_func) {
+				value *args = malloc(sizeof(value) * expr->data.call_expr.arg_count);
+				for (int i = 0; i < expr->data.call_expr.arg_count; i++) {
+					args[i] = evaluate_expr(expr->data.call_expr.args[i], e);
+				}
+
+				result = fn->c_func(expr->data.call_expr.arg_count, args);
+				free(args);
+				return result;
+			}
+
+			if (fn->param_count != expr->data.call_expr.arg_count) {
+				fprintf(stderr, "argument count mismatch\n");
+				exit(1);
+			}
+
+			env *call_env = new_env(fn->closure);
+
+			for (int i = 0; i < fn->param_count; i++) {
+				value arg = evaluate_expr(expr->data.call_expr.args[i], e);
+				env_define(call_env, fn->params[i], arg);
+			}
+
+			return_flag = 0;
+			result = evaluate_expr(fn->body, call_env);
+
+			if (return_flag) {
+				result = return_value;
+			}
+
+			return_flag = 0;
+			free_env(call_env);
+
+			return result;
 		}
 
 		default:
@@ -397,24 +578,38 @@ expression *parse_factor(parser *p) {
 	char *name = parse_identifier(p);
 	if (name) {
 		skip_ws(p);
-
 		if (peek(p) == '(') {
 			advance(p);
-			expression *arg = parse_expression(p);
 			skip_ws(p);
+
+			expression **args = NULL;
+			int arg_count = 0;
+
+			if (peek(p) != ')') {
+				while (1) {
+					expression *arg = parse_expression(p);
+					args = realloc(args, sizeof(expression*) * (arg_count + 1));
+					args[arg_count++] = arg;
+					skip_ws(p);
+					if (peek(p) == ',') {
+						advance(p);
+						skip_ws(p);
+					} else {
+						break;
+					}
+				}
+			}
+
 			if (peek(p) != ')') {
 				fprintf(stderr, "expected ')'\n");
 				exit(1);
 			}
-			advance(p);
-			if (strcmp(name, "print") == 0) {
-				free(name);
-				return new_print(arg);
-			}
-			fprintf(stderr, "unknown function: %s\n", name);
-			exit(1);
-		}
 
+			advance(p);
+
+			expression *callee = new_variable(name);
+			return new_call(callee, args, arg_count);
+		}
 		return new_variable(name);
 	}
 
@@ -604,6 +799,75 @@ expression *parse_if(parser *p) {
 		return new_let(name, value);
 	}
 
+	if (strncmp(p->input + p->pos, "fun", 3) == 0 && !isalnum(p->input[p->pos + 3])) {
+		p->pos += 3;
+		skip_ws(p);
+
+		char *name = parse_identifier(p);
+		if (!name) {
+			fprintf(stderr, "expected function name\n");
+			exit(1);
+		}
+
+		skip_ws(p);
+
+		if (peek(p) != '(') {
+			fprintf(stderr, "expected '('\n");
+			exit(1);
+		}
+
+		advance(p);
+		skip_ws(p);
+
+		char **params = NULL;
+		int param_count = 0;
+
+		if (peek(p) != ')') {
+			while (1) {
+				char *param = parse_identifier(p);
+				if (!param) {
+					fprintf(stderr, "expected parameter name\n");
+					exit(1);
+				}
+
+				params = realloc(params, sizeof(char*) * (param_count + 1));
+				params[param_count++] = param;
+				skip_ws(p);
+
+				if (peek(p) == ',') {
+					advance(p);
+					skip_ws(p);
+				} else {
+					break;
+				}
+			}
+		}
+
+		if (peek(p) != ')') {
+			fprintf(stderr, "expected ')'\n");
+			exit(1);
+		}
+
+		advance(p);
+		skip_ws(p);
+
+		if (peek(p) != '{') {
+			fprintf(stderr, "expected '{'\n");
+			exit(1);
+		}
+
+		expression *body = parse_if(p);
+		return new_function(name, params, param_count, body);
+	}
+
+	if (strncmp(p->input + p->pos, "return", 6) == 0 && !isalnum(p->input[p->pos+6])) {
+		p->pos += 6;
+		skip_ws(p);
+
+		expression *value = parse_expression(p);
+		return new_return(value);
+	}
+
 	if (strncmp(p->input + p->pos, "if", 2) == 0 && !isalnum(p->input[p->pos + 2])) {
 		p->pos += 2;
 		skip_ws(p);
@@ -789,7 +1053,7 @@ void run_repl() {
 		parser p = { line, 0 };
 		expression *expr = parse_statement(&p);
 
-		int val = evaluate_expr(expr, global);
+		value val = evaluate_expr(expr, global);
 		if (expr->type != EXPR_PRINT) {
 			//printf("%d\n", val);
 		}
@@ -826,6 +1090,20 @@ void run_file(const char *filename) {
 	char *source = read_file(filename);
 
 	env *global = new_env(NULL);
+
+	function *print_fn = malloc(sizeof(function));
+	print_fn->param_count = 1;
+	print_fn->params = malloc(sizeof(char*));
+	print_fn->params[0] = strdup("x");
+	print_fn->body = NULL;
+	print_fn->closure = NULL;
+	print_fn->c_func = builtin_print;
+
+	value v;
+	v.type = VAL_FUNCTION;
+	v.func_val = print_fn;
+
+	env_define(global, "print", v);
 
 	parser p = { source, 0 };	
 	expression *expr = parse_program(&p);
