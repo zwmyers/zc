@@ -10,6 +10,11 @@
 
 #define MAX_VARS 100
 
+#define COLOR_HEAD   "\033[1;32m"
+#define COLOR_PROMPT "\033[1;34m"
+#define COLOR_CONT   "\033[1;30m"
+#define COLOR_RESET  "\033[0m"
+
 typedef enum value_type {
 	VAL_INT,
 	VAL_FUNCTION
@@ -160,6 +165,10 @@ static int pwr(int a, int b);
 //builtin functions
 
 value builtin_print(int arg_count, value *args);
+
+//helper for repl
+
+static void print_cont_prompt(int indent_level);
 
 //parser functions
 

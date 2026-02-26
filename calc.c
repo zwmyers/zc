@@ -1096,8 +1096,20 @@ expression *parse_program(parser *p) {
 
 /***********************************************************************/
 
+static void print_cont_prompt(int indent_level) {
+	printf(COLOR_CONT);
+
+	for (int i = 0; i < indent_level; i++) {
+		printf("    "); //4 spaces
+	}
+
+	printf("... " COLOR_RESET);
+}
+
+/***********************************************************************/
+
 void run_repl() {
-	printf("ZCALC INT REPL\n");
+	printf(COLOR_HEAD "ZCALC INT REPL\n" COLOR_RESET);
 	printf("( + - * / ^ %% < <= >= > == != && || )\n");
 	env *global = new_env(NULL);
 
@@ -1120,7 +1132,7 @@ void run_repl() {
 		int brace_depth = 0;
 		int paren_depth = 0;
 
-		printf(">> ");
+		printf(COLOR_PROMPT "zc> " COLOR_RESET);
 
 		while (1) {
 			char line[256];
@@ -1152,11 +1164,15 @@ void run_repl() {
 				break;
 			}
 
-			printf(".... ");
+			print_cont_prompt(brace_depth);
 		}
 
 		parser p = { buffer, 0 };
 		expression *expr = parse_program(&p);
+		if (!expr) {
+			fprintf(stderr, "Parse error...\n");
+			continue;
+		}
 		return_flag = 0;
 		evaluate_expr(expr, global);
 		//free_expr(expr);
