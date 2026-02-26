@@ -1175,7 +1175,7 @@ void run_repl() {
 		}
 		return_flag = 0;
 		evaluate_expr(expr, global);
-		//free_expr(expr);
+		//free_expr(expr); MEMORY LEAK !!!!! NEED TO IMPLEMENT COPYING
 	}
 
 	free_env(global);
