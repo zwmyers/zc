@@ -508,29 +508,85 @@ void free_expr(expression *expr) {
 	if (!expr) {
 		return;
 	}
-	
-	if (expr->type == EXPR_ASSIGN) {
-		free(expr->data.assign.var_name);
-		free_expr(expr->data.assign.value);
-	}
 
-	if (expr->type == EXPR_BINARY) {
-		free_expr(expr->data.binary.left);
-		free_expr(expr->data.binary.right);
-	}
+	switch (expr->type) {
+		
+		case EXPR_LITERAL:
+			break;
 
-	if (expr->type == EXPR_BLOCK) {
-		free_expr(expr->data.block.body);
-	}
+		case EXPR_VARIABLE:
+			free(expr->data.var_name);
+			break;
 
-	if(expr->type == EXPR_IF) {
-		free_expr(expr->data.if_expr.condition);
-		free_expr(expr->data.if_expr.then_branch);
-		if (expr->data.if_expr.else_branch) {
-			free_expr(expr->data.if_expr.else_branch);
-		}
-	}
+		case EXPR_ASSIGN:
+			free(expr->data.assign.var_name);
+			free_expr(expr->data.assign.value);
+			break;
 
+		case EXPR_UNARY:
+			free_expr(expr->data.unary.operand);
+			break;
+
+		case EXPR_BINARY:
+			free_expr(expr->data.binary.left);
+			free_expr(expr->data.binary.right);
+			break;
+
+		case EXPR_PRINT:
+			free_expr(expr->data.print.value);
+			break;
+
+		case EXPR_SEQUENCE:
+			free_expr(expr->data.sequence.left);
+			free_expr(expr->data.sequence.right);
+			break;
+
+		case EXPR_BLOCK:
+			free_expr(expr->data.block.body);
+			break;
+
+		case EXPR_IF:
+			free_expr(expr->data.if_expr.condition);
+			free_expr(expr->data.if_expr.then_branch);
+			if (expr->data.if_expr.else_branch) {
+				free_expr(expr->data.if_expr.else_branch);
+			}
+			break;
+
+		case EXPR_LET:
+			free(expr->data.let.var_name);
+			free_expr(expr->data.let.value);
+			break;
+
+		case EXPR_WHILE:
+			free_expr(expr->data.while_expr.condition);
+			free_expr(expr->data.while_expr.body);
+			break;
+
+		case EXPR_FUNCTION:
+			free(expr->data.function_expr.name);
+			for (int i = 0; i < expr->data.function_expr.param_count; i++) {
+				free(expr->data.function_expr.params[i]);
+			}
+			free(expr->data.function_expr.params);
+			free_expr(expr->data.function_expr.body);
+			break;
+
+		case EXPR_CALL:
+			free_expr(expr->data.call_expr.callee);
+			for (int i = 0; i < expr->data.call_expr.arg_count; i++) {
+				free_expr(expr->data.call_expr.args[i]);
+			}
+			free(expr->data.call_expr.args);
+			break;
+
+		case EXPR_RETURN:
+			free_expr(expr->data.return_expr.value);
+			break;
+
+		default:
+			break;
+	}
 	free(expr);
 }
 
@@ -539,6 +595,13 @@ void free_env(env *e) {
 	while (v) {
 		var *next = v->next;
 		free(v->name);
+
+		if (v->val.type == VAL_FUNCTION) {
+			function *fn = v->val.func_val;
+
+			free(fn);
+		}
+
 		free(v);
 		v = next;
 	}
@@ -1028,7 +1091,7 @@ expression *parse_program(parser *p) {
 		skip_ws(p);
 	}
 
-	return new_block(body);
+	return body;
 }
 
 /***********************************************************************/
@@ -1038,28 +1101,68 @@ void run_repl() {
 	printf("( + - * / ^ %% < <= >= > == != && || )\n");
 	env *global = new_env(NULL);
 
+	function *print_fn = malloc(sizeof(function));
+	print_fn->param_count = 1;
+	print_fn->params = malloc(sizeof(char*));
+	print_fn->params[0] = strdup("x");
+	print_fn->body = NULL;
+	print_fn->closure = NULL;
+	print_fn->c_func = builtin_print;
+
+	value v;
+	v.type = VAL_FUNCTION;
+	v.func_val = print_fn;
+
+	env_define(global, "print", v);
+
 	while (1) {
-		char line[256];
+		char buffer[4096] = {0};
+		int brace_depth = 0;
+		int paren_depth = 0;
 
-		printf(">>");
+		printf(">> ");
 
-		if (!fgets(line, sizeof(line), stdin)) {
-			printf("\n");
-			break;
+		while (1) {
+			char line[256];
+
+			if (!fgets(line, sizeof(line), stdin)) {
+				printf("\n");
+				free_env(global);
+				return;
+			}
+
+			strcat(buffer, line);
+
+			for (int i = 0; line[i]; i++) {
+				if (line[i] == '{') {
+					brace_depth++;
+				}
+				if (line[i] == '}') {
+					brace_depth--;
+				}
+				if (line[i] == '(') {
+					paren_depth++;
+				}
+				if (line[i] == ')') {
+					paren_depth--;
+				}
+			}
+
+			if (brace_depth <= 0 && paren_depth <= 0) {
+				break;
+			}
+
+			printf(".... ");
 		}
 
-		line[strcspn(line, "\n")] = '\0';
-
-		parser p = { line, 0 };
-		expression *expr = parse_statement(&p);
-
-		value val = evaluate_expr(expr, global);
-		if (expr->type != EXPR_PRINT) {
-			//printf("%d\n", val);
-		}
-
-		free_expr(expr);
+		parser p = { buffer, 0 };
+		expression *expr = parse_program(&p);
+		return_flag = 0;
+		evaluate_expr(expr, global);
+		//free_expr(expr);
 	}
+
+	free_env(global);
 }
 
 char *read_file(const char *filename) {
@@ -1112,6 +1215,7 @@ void run_file(const char *filename) {
 	
 	free_expr(expr);
 	free(source);
+	free_env(global);
 }
 
 /*********************************main**********************************/

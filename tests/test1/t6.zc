@@ -1,0 +1,17 @@
+fun loop(a, c) {
+	let b = 0;
+	while (b < a) {
+		b = b + 1;
+		print(b);
+	}
+	c = 10;
+}
+
+fun main() {
+	let a = 10;
+	let c = 0;
+	loop(a, c);
+	print(c);
+}
+
+main();
