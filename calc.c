@@ -217,6 +217,31 @@ expression *new_return(expression *value) {
 	return expr;
 }
 
+expression *new_arr_literal(expression **elements, int count) {
+	expression *expr = malloc(sizeof(expression));
+	expr->type = EXPR_ARRAY_LITERAL;
+	expr->data.array_literal.elements = elements;
+	expr->data.array_literal.count = count;
+	return expr;
+}
+
+expression *new_arr_access(expression *arr, expression *index) {
+	expression *expr = malloc(sizeof(expression));
+	expr->type = EXPR_ARRAY_ACCESS;
+	expr->data.array_access.array = arr;
+	expr->data.array_access.index = index;
+	return expr;
+}
+
+expression *new_arr_assign(expression *arr, expression *index, expression *value_expr) {
+	expression *expr = malloc(sizeof(expression));
+	expr->type = EXPR_ARRAY_ASSIGN;
+	expr->data.array_assign.array = arr;
+	expr->data.array_assign.index = index;
+	expr->data.array_assign.value = value_expr;
+	return expr;
+}
+
 /*****************************identifiers*******************************/
 
 int is_identifier_start(char c) {
@@ -495,6 +520,64 @@ value evaluate_expr(expression *expr, env *e) {
 			return result;
 		}
 
+		case EXPR_ARRAY_LITERAL: {
+			value result;
+			result.type = VAL_ARRAY;
+			int len = expr->data.array_literal.count;
+			result.array_val.length = len;
+			result.array_val.data = malloc(sizeof(int) * len);
+			for (int i = 0; i < len; i++) {
+				value v = evaluate_expr(expr->data.array_literal.elements[i], e);
+
+				if (v.type != VAL_INT) {
+					fprintf(stderr, "array elements must be int\n");
+					exit(1);
+				}
+
+				result.array_val.data[i] = v.int_val;
+			}
+			return result;
+		}
+
+		case EXPR_ARRAY_ACCESS: {
+			value arr = evaluate_expr(expr->data.array_access.array, e);
+			value idx = evaluate_expr(expr->data.array_access.index, e);
+
+			if (arr.type != VAL_ARRAY || idx.type != VAL_INT) {
+				fprintf(stderr, "invalid array access\n");
+				exit(1);
+			}
+
+			if (idx.int_val < 0 || idx.int_val >= arr.array_val.length) {
+				fprintf(stderr, "array index out of bounds\n");
+				exit(1);
+			}
+
+			value result;
+			result.type = VAL_INT;
+			result.int_val = arr.array_val.data[idx.int_val];
+
+			return result;
+		}
+
+		case EXPR_ARRAY_ASSIGN: {
+			value arr = evaluate_expr(expr->data.array_assign.array, e);
+			value idx = evaluate_expr(expr->data.array_assign.index, e);
+			value val = evaluate_expr(expr->data.array_assign.value, e);
+
+			if (arr.type != VAL_ARRAY || idx.type != VAL_INT || val.type != VAL_INT) {
+
+			}
+
+			if (idx.int_val < 0 || idx.int_val >= arr.array_val.length) {
+				fprintf(stderr, "index out of bounds\n");
+				exit(1);
+			}
+
+			arr.array_val.data[idx.int_val] = val.int_val;
+			return val;
+		}
+
 		default:
 			fprintf(stderr, "Unknown expression type\n");
 			exit(1);
@@ -602,6 +685,10 @@ void free_env(env *e) {
 			free(fn);
 		}
 
+		if (v->val.type == VAL_ARRAY) {
+			free(v->val.array_val.data);
+		}
+
 		free(v);
 		v = next;
 	}
@@ -636,6 +723,36 @@ expression *parse_factor(parser *p) {
 			exit(1);
 		}
 		return expr;
+	}
+	
+	if (peek(p) == '[') {
+		advance(p);
+		expression **elements = NULL;
+		int count = 0;
+		skip_ws(p);
+
+		if (peek(p) != ']') {
+			while (1) {
+				expression *elem = parse_expression(p);
+				elements = realloc(elements, sizeof(expression*) * (count + 1));
+				elements[count++] = elem;
+				skip_ws(p);
+				if (peek(p) == ',') {
+					advance(p);
+					skip_ws(p);
+				} else {
+					break;
+				}
+			}
+		}
+
+		if (peek(p) != ']') {
+			fprintf(stderr, "expected ']'\n");
+			exit(1);
+		}
+
+		advance(p);
+		return new_arr_literal(elements, count);
 	}
 
 	char *name = parse_identifier(p);
@@ -673,7 +790,21 @@ expression *parse_factor(parser *p) {
 			expression *callee = new_variable(name);
 			return new_call(callee, args, arg_count);
 		}
-		return new_variable(name);
+		expression *expr = new_variable(name);
+		while (peek(p) == '[') {
+			advance(p);
+			expression *index = parse_expression(p);
+			skip_ws(p);
+			
+			if (peek(p) != ']') {
+				fprintf(stderr, "expected ']'\n");
+				exit(1);
+			}
+
+			advance(p);
+			expr = new_arr_access(expr, index);
+		}
+		return expr;
 	}
 
 	return parse_number(p);
@@ -1034,6 +1165,14 @@ expression *parse_assignment(parser *p) {
 			exit(1);
 		}
 
+		if (left->type == EXPR_ARRAY_ACCESS) {
+			return new_arr_assign(
+					left->data.array_access.array,
+					left->data.array_access.index,
+					right
+			);
+		}
+
 		return new_assign(left->data.var_name, right);
 	}
 
@@ -1175,7 +1314,7 @@ void run_repl() {
 		}
 		return_flag = 0;
 		evaluate_expr(expr, global);
-		//free_expr(expr); MEMORY LEAK !!!!! NEED TO IMPLEMENT COPYING
+		//free_expr(expr); MEMORY LEAK !! NEED TO IMPLEMENT COPYING -- no double frees
 	}
 
 	free_env(global);

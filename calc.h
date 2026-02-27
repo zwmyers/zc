@@ -17,7 +17,8 @@
 
 typedef enum value_type {
 	VAL_INT,
-	VAL_FUNCTION
+	VAL_FUNCTION,
+	VAL_ARRAY
 } value_type;
 
 typedef struct function function;
@@ -27,6 +28,12 @@ typedef struct value {
 	union {
 		int int_val;
 		function *func_val;
+
+		struct {
+			int *data;
+			int length;
+		} array_val;
+
 	};
 } value;
 
@@ -65,7 +72,10 @@ typedef enum expr_type {
 	EXPR_WHILE,
 	EXPR_FUNCTION,
 	EXPR_CALL,
-	EXPR_RETURN
+	EXPR_RETURN,
+	EXPR_ARRAY_LITERAL,
+	EXPR_ARRAY_ACCESS,
+	EXPR_ARRAY_ASSIGN
 } expr_type;
 
 typedef enum operator_type {
@@ -144,6 +154,22 @@ typedef struct expression {
 			struct expression *value;
 		} return_expr;
 
+		struct {
+			struct expression **elements;
+			int count;
+		} array_literal;
+
+		struct {
+			struct expression *array;
+			struct expression *index;
+		} array_access;
+
+		struct {
+			struct expression *array;
+			struct expression *index;
+			struct expression *value;
+		} array_assign;
+
 	} data;
 
 } expression;
@@ -199,6 +225,9 @@ expression *new_while(expression *condition, expression *body);
 expression *new_function(char *name, char **params, int param_count, expression *body);
 expression *new_call(expression *callee, expression **args, int arg_count);
 expression *new_return(expression *value);
+expression *new_arr_literal(expression **elements, int count);
+expression *new_arr_access(expression *arr, expression *index);
+expression *new_arr_assign(expression *arr, expression *index, expression *value_expr);
 
 //identifiers
 
