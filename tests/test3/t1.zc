@@ -1,0 +1,14 @@
+fun swap(a, i, j) {
+	let temp = a[i];
+	a[i] = a[j];
+	a[j] = temp;
+}
+
+fun main() {
+	let arr = [1, 2, 3];
+	swap(arr, 0, 2);
+	print(arr[0]);
+	print(arr[2]);
+}
+
+main();

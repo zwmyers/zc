@@ -566,7 +566,8 @@ value evaluate_expr(expression *expr, env *e) {
 			value val = evaluate_expr(expr->data.array_assign.value, e);
 
 			if (arr.type != VAL_ARRAY || idx.type != VAL_INT || val.type != VAL_INT) {
-
+				fprintf(stderr, "index out of bounds\n");
+				exit(1);
 			}
 
 			if (idx.int_val < 0 || idx.int_val >= arr.array_val.length) {
@@ -666,6 +667,24 @@ void free_expr(expression *expr) {
 		case EXPR_RETURN:
 			free_expr(expr->data.return_expr.value);
 			break;
+		
+		case EXPR_ARRAY_LITERAL:
+			for (int i = 0; i < expr->data.array_literal.count; i++) {
+				free_expr(expr->data.array_literal.elements[i]);
+			}
+			free(expr->data.array_literal.elements);
+			break;
+
+		case EXPR_ARRAY_ACCESS:
+			free_expr(expr->data.array_access.array);
+			free_expr(expr->data.array_access.index);
+			break;
+
+		case EXPR_ARRAY_ASSIGN:
+			free_expr(expr->data.array_assign.array);
+			free_expr(expr->data.array_assign.index);
+			free_expr(expr->data.array_assign.value);
+			break;
 
 		default:
 			break;
@@ -685,9 +704,9 @@ void free_env(env *e) {
 			free(fn);
 		}
 
-		if (v->val.type == VAL_ARRAY) {
-			free(v->val.array_val.data);
-		}
+		//if (v->val.type == VAL_ARRAY) {
+		//	free(v->val.array_val.data);
+		//}
 
 		free(v);
 		v = next;
@@ -791,6 +810,7 @@ expression *parse_factor(parser *p) {
 			return new_call(callee, args, arg_count);
 		}
 		expression *expr = new_variable(name);
+		skip_ws(p);
 		while (peek(p) == '[') {
 			advance(p);
 			expression *index = parse_expression(p);
@@ -1160,20 +1180,24 @@ expression *parse_assignment(parser *p) {
 
 		expression *right = parse_assignment(p);
 
-		if (left->type != EXPR_VARIABLE) {
-			fprintf(stderr, "invalid assignment target\n");
-			exit(1);
+		if (left->type == EXPR_VARIABLE) {
+			return new_assign(left->data.var_name, right);
 		}
 
 		if (left->type == EXPR_ARRAY_ACCESS) {
-			return new_arr_assign(
-					left->data.array_access.array,
-					left->data.array_access.index,
-					right
-			);
+			expression *arr = left->data.array_access.array;
+			expression *idx = left->data.array_access.index;
+
+			left->data.array_access.array = NULL;
+			left->data.array_access.index = NULL;
+
+			free(left);
+
+			return new_arr_assign(arr, idx, right);
 		}
 
-		return new_assign(left->data.var_name, right);
+		fprintf(stderr, "invalid assignment target\n");
+		exit(1);
 	}
 
 	return left;
