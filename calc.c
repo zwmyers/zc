@@ -30,12 +30,52 @@ static int pwr(int a, int b) {
 /**************************builtin function*****************************/
 
 value builtin_print(int arg_count, value *args) {
-	if (arg_count != 1 || args[0].type != VAL_INT) {
+	if (arg_count != 1) {
 		fprintf(stderr, "print expects a single int arg\n");
 		exit(1);
 	}
 
-	printf("%d\n", args[0].int_val);
+	switch (args[0].type) {\
+		case VAL_INT:
+			printf("%d\n", args[0].int_val);
+			break;
+
+		case VAL_STRING:
+			printf("%s\n", args[0].str_val);
+			break;
+
+		case VAL_ARRAY:
+			printf("[ ");
+			for (int i = 0; i < args[0].array_val.length; i++) {
+				printf("%d ", args[0].array_val.data[i]);
+			}
+			printf("]\n");
+			break;
+
+		default:
+			fprintf(stderr, "cannot print value\n");
+			exit(1);
+	}
+
+	value result;
+	result.type = VAL_INT;
+	result.int_val = 0;
+	return result;
+}
+
+value builtin_print_arr(int arg_count, value *args) {
+	if (arg_count != 2 || args[0].type != VAL_ARRAY || args[1].type != VAL_INT) {
+		fprintf(stderr, "print_arr expects array and int as args\n");
+		exit(1);
+	}
+
+	int arr_len = args[1].int_val;
+
+	printf("[ ");
+	for(int i = 0; i < arr_len; i++) {
+		printf("%d ", args[0].array_val.data[i]);
+	}
+	printf("]\n");
 
 	value result;
 	result.type = VAL_INT;
@@ -239,6 +279,13 @@ expression *new_arr_assign(expression *arr, expression *index, expression *value
 	expr->data.array_assign.array = arr;
 	expr->data.array_assign.index = index;
 	expr->data.array_assign.value = value_expr;
+	return expr;
+}
+
+expression *new_string_literal(char *str) {
+	expression *expr = malloc(sizeof(expression));
+	expr->type = EXPR_STRING_LITERAL;
+	expr->data.string_literal.str = str;
 	return expr;
 }
 
@@ -579,6 +626,13 @@ value evaluate_expr(expression *expr, env *e) {
 			return val;
 		}
 
+		case EXPR_STRING_LITERAL: {
+			value v;
+			v.type = VAL_STRING;
+			v.str_val = strdup(expr->data.string_literal.str);
+			return v;
+		}
+
 		default:
 			fprintf(stderr, "Unknown expression type\n");
 			exit(1);
@@ -772,6 +826,27 @@ expression *parse_factor(parser *p) {
 
 		advance(p);
 		return new_arr_literal(elements, count);
+	}
+
+	if (peek(p) == '"') {
+		advance(p);
+		int start = p->pos;
+		while (peek(p) != '"' && !is_at_end(p)) {
+			advance(p);
+		}
+
+		if (peek(p) != '"') {
+			fprintf(stderr, "unterminated string\n");
+			exit(1);
+		}
+
+		int len = p->pos - start;
+		char *str = malloc(len + 1);
+		strncpy(str, p->input + start, len);
+		str[len] = '\0';
+		advance(p);
+
+		return new_string_literal(str);
 	}
 
 	char *name = parse_identifier(p);
@@ -1269,13 +1344,7 @@ static void print_cont_prompt(int indent_level) {
 	printf("... " COLOR_RESET);
 }
 
-/***********************************************************************/
-
-void run_repl() {
-	printf(COLOR_HEAD "ZCALC INT REPL\n" COLOR_RESET);
-	printf("( + - * / ^ %% < <= >= > == != && || )\n");
-	env *global = new_env(NULL);
-
+static value reg_print() {
 	function *print_fn = malloc(sizeof(function));
 	print_fn->param_count = 1;
 	print_fn->params = malloc(sizeof(char*));
@@ -1287,8 +1356,19 @@ void run_repl() {
 	value v;
 	v.type = VAL_FUNCTION;
 	v.func_val = print_fn;
+	return v;
+}
 
-	env_define(global, "print", v);
+/***********************************************************************/
+
+void run_repl() {
+	printf(COLOR_HEAD "ZCALC INT REPL\n" COLOR_RESET);
+	printf("( + - * / ^ %% < <= >= > == != && || )\n");
+	env *global = new_env(NULL);
+
+	value v_print = reg_print();
+	env_define(global, "print", v_print);
+
 
 	while (1) {
 		char buffer[4096] = {0};
@@ -1373,19 +1453,8 @@ void run_file(const char *filename) {
 
 	env *global = new_env(NULL);
 
-	function *print_fn = malloc(sizeof(function));
-	print_fn->param_count = 1;
-	print_fn->params = malloc(sizeof(char*));
-	print_fn->params[0] = strdup("x");
-	print_fn->body = NULL;
-	print_fn->closure = NULL;
-	print_fn->c_func = builtin_print;
-
-	value v;
-	v.type = VAL_FUNCTION;
-	v.func_val = print_fn;
-
-	env_define(global, "print", v);
+	value v_print = reg_print();
+	env_define(global, "print", v_print);
 
 	parser p = { source, 0 };	
 	expression *expr = parse_program(&p);

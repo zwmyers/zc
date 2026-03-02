@@ -272,8 +272,7 @@ expression *parse_program(parser *p);
 
 //std function registration
 
-static void print_cont_prompt(int indent_level);
-static value reg_print(void);
+static value register_funcs();
 
 //file handling
 
