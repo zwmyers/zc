@@ -377,6 +377,38 @@ value evaluate_expr(expression *expr, env *e) {
 		}
 
 		case EXPR_BINARY: {
+			operator_type op = expr->data.binary.operation;
+
+			if (op == OP_AND) {
+				value l = evaluate_expr(expr->data.binary.left, e);
+				
+				if (l.type != VAL_INT) {
+					fprintf(stderr, "type error in &&\n");
+					exit(1);
+				}
+
+				if (!l.int_val) {
+					return l;
+				}
+
+				return evaluate_expr(expr->data.binary.right, e);
+			}
+
+			if (op == OP_OR) {
+				value l = evaluate_expr(expr->data.binary.left, e);
+				
+				if (l.type != VAL_INT) {
+					fprintf(stderr, "type error in ||\n");
+					exit(1);
+				}
+
+				if (l.int_val) {
+					return l;
+				}
+
+				return evaluate_expr(expr->data.binary.right, e);
+			}
+
 			value l = evaluate_expr(expr->data.binary.left, e);
 			value r = evaluate_expr(expr->data.binary.right, e);
 
@@ -388,7 +420,7 @@ value evaluate_expr(expression *expr, env *e) {
 			value result;
 			result.type = VAL_INT;
 
-			switch(expr->data.binary.operation) {
+			switch(op) {
 				case OP_ADD:
 						result.int_val = l.int_val + r.int_val;
 						break;
@@ -426,15 +458,6 @@ value evaluate_expr(expression *expr, env *e) {
 				case OP_GE:
 					result.int_val = (l.int_val >= r.int_val);
 					break;
-
-				case OP_AND: {
-						result.int_val = (l.int_val && r.int_val);
-						break;
-					}
-				case OP_OR: {
-						result.int_val = (l.int_val || r.int_val);
-						break;
-					}
 
 				default:
 					fprintf(stderr, "Unknown binary operator\n");
