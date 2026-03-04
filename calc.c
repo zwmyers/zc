@@ -35,7 +35,7 @@ value builtin_print(int arg_count, value *args) {
 		exit(1);
 	}
 
-	switch (args[0].type) {\
+	switch (args[0].type) {
 		case VAL_INT:
 			printf("%d\n", args[0].int_val);
 			break;
