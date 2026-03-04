@@ -198,7 +198,7 @@ static int pwr(int a, int b);
 //builtin functions
 
 value builtin_print(int arg_count, value *args);
-value builtin_print_arr(int arg_count, value *args);
+value builtin_len(int arg_count, value *args);
 
 //helper for repl
 
@@ -274,6 +274,7 @@ expression *parse_program(parser *p);
 
 static void print_cont_prompt(int indent_level);
 static value reg_print(void);
+static value reg_len(void);
 
 //file handling
 

@@ -63,23 +63,20 @@ value builtin_print(int arg_count, value *args) {
 	return result;
 }
 
-value builtin_print_arr(int arg_count, value *args) {
-	if (arg_count != 2 || args[0].type != VAL_ARRAY || args[1].type != VAL_INT) {
-		fprintf(stderr, "print_arr expects array and int as args\n");
+value builtin_len(int arg_count, value *args) {
+	if (arg_count != 1) {
+		fprintf(stderr, "len expects 1 arg\n");
 		exit(1);
 	}
 
-	int arr_len = args[1].int_val;
-
-	printf("[ ");
-	for(int i = 0; i < arr_len; i++) {
-		printf("%d ", args[0].array_val.data[i]);
+	if (args[0].type != VAL_ARRAY) {
+		fprintf(stderr, "len expects an array\n");
+		exit(1);
 	}
-	printf("]\n");
 
 	value result;
 	result.type = VAL_INT;
-	result.int_val = 0;
+	result.int_val = args[0].array_val.length;
 	return result;
 }
 
@@ -1382,6 +1379,21 @@ static value reg_print() {
 	return v;
 }
 
+static value reg_len() {
+	function *len_fn = malloc(sizeof(function));
+	len_fn->param_count = 1;
+	len_fn->params = malloc(sizeof(char*));
+	len_fn->params[0] = strdup("arr");
+	len_fn->body = NULL;
+	len_fn->closure = NULL;
+	len_fn->c_func = builtin_len;
+
+	value v;
+	v.type = VAL_FUNCTION;
+	v.func_val = len_fn;
+	return v;
+}
+
 /***********************************************************************/
 
 void run_repl() {
@@ -1392,6 +1404,8 @@ void run_repl() {
 	value v_print = reg_print();
 	env_define(global, "print", v_print);
 
+	value v_len = reg_len();
+	env_define(global, "len", v_len);
 
 	while (1) {
 		char buffer[4096] = {0};
@@ -1478,6 +1492,9 @@ void run_file(const char *filename) {
 
 	value v_print = reg_print();
 	env_define(global, "print", v_print);
+
+	value v_len = reg_len();
+	env_define(global, "len", v_len);
 
 	parser p = { source, 0 };	
 	expression *expr = parse_program(&p);
