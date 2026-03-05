@@ -1,0 +1,47 @@
+fun linear_arr_search(arr, arr_val) {
+	let i = 0;
+	let index = -1;
+	while (i < len(arr)) {
+		if (arr[i] == arr_val) {
+			index = i;
+			i = len(arr);
+		}
+		i = i + 1;
+	}
+	return index;
+}
+
+fun eval_tests(arr_f, arr_c) {
+	if (len(arr_f) != len(arr_c)) {
+		print("input mismatch");
+	}
+	let length = len(arr_f);
+	let i = 0;
+	while (i < length) {
+		if (arr_f[i] == arr_c[i]) {
+			print("test passed");
+		} else {
+			print("test failed");
+		}
+		i = i + 1;
+	}
+}
+
+fun tests() {
+	let arr = [5, 4, 3, 2, 1];
+	let arr_f = [0, 0, 0, 0];
+	let arr_c = [2, -1, 4, 0];
+
+	arr_f[0] = linear_arr_search(arr, 3);
+	arr_f[1] = linear_arr_search(arr, 0);
+	arr_f[2] = linear_arr_search(arr, 1);
+	arr_f[3] = linear_arr_search(arr, 5);
+	
+	eval_tests(arr_f, arr_c);
+}
+
+fun main() {
+	tests();
+}
+
+main();
