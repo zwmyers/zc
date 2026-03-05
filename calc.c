@@ -29,6 +29,7 @@ static int pwr(int a, int b) {
 
 /**************************builtin function*****************************/
 
+//sig: print(val)
 value builtin_print(int arg_count, value *args) {
 	if (arg_count != 1) {
 		fprintf(stderr, "print expects a single int arg\n");
@@ -63,6 +64,7 @@ value builtin_print(int arg_count, value *args) {
 	return result;
 }
 
+//sig: len(arr)
 value builtin_len(int arg_count, value *args) {
 	if (arg_count != 1) {
 		fprintf(stderr, "len expects 1 arg\n");
@@ -79,6 +81,59 @@ value builtin_len(int arg_count, value *args) {
 	result.int_val = args[0].array_val.length;
 	return result;
 }
+
+//sig: array(n)
+value builtin_array(int arg_count, value *args) {
+	if (arg_count != 1) {
+		fprintf(stderr, "array expects 1 arg\n");
+		exit(1);
+	}
+
+	if (args[0].type != VAL_INT) {
+		fprintf(stderr, "array expects an int\n");
+		exit(1);
+	}
+	
+	int len = args[0].int_val;
+
+	value result;
+	result.type = VAL_ARRAY;
+	result.array_val.length = len;
+	result.array_val.data = malloc(sizeof(int) * len);
+
+	for (int i = 0; i < len; i++) {
+		result.array_val.data[i] = 0;
+	}
+
+	return result;
+}
+
+//sig: swap(arr, i, j)
+value builtin_swap(int arg_count, value *args) {
+	if (arg_count != 3 || args[0].type != VAL_ARRAY 
+			|| args[1].type != VAL_INT || args[2].type != VAL_INT) {
+		fprintf(stderr, "swap expects arr, int, int\n");
+		exit(1);
+	}
+
+	value arr = args[0];
+	int i = args[1].int_val;
+	int j = args[2].int_val;
+
+	int tmp = arr.array_val.data[i];
+	arr.array_val.data[i] = arr.array_val.data[j];
+	arr.array_val.data[j] = tmp;
+
+	value v;
+	v.type = VAL_INT;
+	v.int_val = 0;
+	return v;
+}
+
+//sig: copy(src, dst, start, end)
+//value builtin_copy(int arg_count, value *args) {
+
+//}
 
 /**************************parser functions*****************************/
 
@@ -1394,6 +1449,38 @@ static value reg_len() {
 	return v;
 }
 
+static value reg_array() {
+	function *arr_fn = malloc(sizeof(function));
+	arr_fn->param_count = 1;
+	arr_fn->params = malloc(sizeof(char*));
+	arr_fn->params[0] = strdup("size");
+	arr_fn->body = NULL;
+	arr_fn->closure = NULL;
+	arr_fn->c_func = builtin_array;
+
+	value v;
+	v.type = VAL_FUNCTION;
+	v.func_val = arr_fn;
+	return v;
+}
+
+static value reg_swap() {
+	function *swap_fn = malloc(sizeof(function));
+	swap_fn->param_count = 3;
+	swap_fn->params = malloc(sizeof(char*) * 3);
+	swap_fn->params[0] = strdup("arr");
+	swap_fn->params[1] = strdup("i");
+	swap_fn->params[2] = strdup("j");
+	swap_fn->body = NULL;
+	swap_fn->closure = NULL;
+	swap_fn->c_func = builtin_swap;
+
+	value v;
+	v.type = VAL_FUNCTION;
+	v.func_val = swap_fn;
+	return v;
+}
+
 /***********************************************************************/
 
 void run_repl() {
@@ -1406,6 +1493,12 @@ void run_repl() {
 
 	value v_len = reg_len();
 	env_define(global, "len", v_len);
+
+	value v_arr = reg_array();
+	env_define(global, "array", v_arr);
+
+	value v_swp = reg_swap();
+	env_define(global, "swap", v_swp);
 
 	while (1) {
 		char buffer[4096] = {0};
@@ -1495,6 +1588,12 @@ void run_file(const char *filename) {
 
 	value v_len = reg_len();
 	env_define(global, "len", v_len);
+
+	value v_arr = reg_array();
+	env_define(global, "array", v_arr);
+
+	value v_swp = reg_swap();
+	env_define(global, "swap", v_swp);
 
 	parser p = { source, 0 };	
 	expression *expr = parse_program(&p);

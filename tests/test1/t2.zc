@@ -1,0 +1,42 @@
+fun sel_sort(arr) {
+	let i = 0;
+	let arr_len = len(arr);
+	while (i < arr_len - 1) {
+		let min = i;
+		let j = i + 1;
+		while (j < arr_len) {
+			if (arr[j] < arr[min]) {
+				min = j;
+			}
+			j = j + 1;
+		}
+		swap(arr, i, min);
+		i = i +1;
+	}
+}
+
+fun tests() {
+	let arr_f = [5, 4, 3, 2, 1];
+	sel_sort(arr_f);
+	let arr_c = [1, 2, 3, 4, 5];
+	let i = 0;
+	let arr_len = len(arr_f);
+	let passed = 1;
+	while (i < arr_len) {
+		if (arr_f[i] != arr_c[i]) {
+			passed = 0;
+		}
+		i = i + 1;
+	}
+	if (passed) {
+		print("test passed");
+	} else {
+		print("test failed");
+	}
+}
+
+fun main() {
+	tests();	
+}
+
+main();

@@ -199,6 +199,8 @@ static int pwr(int a, int b);
 
 value builtin_print(int arg_count, value *args);
 value builtin_len(int arg_count, value *args);
+value builtin_swap(int arg_count, value *args);
+value builtin_copy(int arg_count, value *args);
 
 //helper for repl
 
