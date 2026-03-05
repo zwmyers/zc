@@ -6,4 +6,5 @@ len(args) with array arg gives int value of length<br>
 
 
 TODO<BR>
-break and continue -> for loops
+break and continue -> for loops<br>
+fix memory leaks (copying? arena?)
